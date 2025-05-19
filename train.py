@@ -6,10 +6,8 @@ from torch.utils.data import Dataset, DataLoader
 from sklearn.metrics import accuracy_score
 from tqdm import tqdm
 
-from models.pa_lstm import PoseAttentionLSTM
+from model.pa_lstm import PoseAttentionLSTM
 
-
-# ✅ Dataset 클래스
 class PoseSequenceDataset(Dataset):
     def __init__(self, features_path, labels_path, seq_len=30):
         self.features = np.load(features_path)
@@ -28,12 +26,11 @@ class PoseSequenceDataset(Dataset):
         return len(self.X_seq)
 
     def __getitem__(self, idx):
-        X = torch.tensor(self.X_seq[idx], dtype=torch.float32)
-        y = torch.tensor(self.y_seq[idx], dtype=torch.float32)
+        X = self.X_seq[idx].reshape(self.seq_len, 8, 2)  # (T, 16) → (T, 8, 2)
+        X = torch.tensor(X, dtype=torch.float32)
+        y = torch.tensor(self.y_seq[idx], dtype=torch.float32).squeeze()
         return X, y
 
-
-# ✅ Train
 def train(model, dataloader, optimizer, criterion, device, grad_clip=None):
     model.train()
     losses, preds, targets = [], [], []
@@ -52,8 +49,6 @@ def train(model, dataloader, optimizer, criterion, device, grad_clip=None):
     acc = accuracy_score(targets, preds)
     return np.mean(losses), acc
 
-
-# ✅ Eval
 def evaluate(model, dataloader, criterion, device):
     model.eval()
     losses, preds, targets = [], [], []
@@ -68,8 +63,6 @@ def evaluate(model, dataloader, criterion, device):
     acc = accuracy_score(targets, preds)
     return np.mean(losses), acc
 
-
-# ✅ Main 함수
 def main(features_path, labels_path, batch_size, epochs, lr, seq_len, grad_clip, patience, model_path):
     os.makedirs(os.path.dirname(model_path), exist_ok=True)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -82,9 +75,16 @@ def main(features_path, labels_path, batch_size, epochs, lr, seq_len, grad_clip,
     train_loader = DataLoader(train_set, batch_size=batch_size, shuffle=True)
     val_loader = DataLoader(val_set, batch_size=batch_size, shuffle=False)
 
+    # model = PoseAttentionLSTM(
+    #     num_joints=dataset.X_seq.shape[2],
+    #     input_dim=dataset.X_seq.shape[3] if dataset.X_seq.ndim == 4 else 2,
+    #     hidden_dim=128,
+    #     num_layers=1,
+    #     dropout=0.3
+    # ).to(device)
     model = PoseAttentionLSTM(
-        num_joints=dataset.X_seq.shape[2],
-        input_dim=dataset.X_seq.shape[3] if dataset.X_seq.ndim == 4 else 2,
+        num_joints=8,
+        input_dim=2,
         hidden_dim=128,
         num_layers=1,
         dropout=0.3
@@ -112,15 +112,13 @@ def main(features_path, labels_path, batch_size, epochs, lr, seq_len, grad_clip,
                 print(f"Early stopping at epoch {epoch+1}")
                 break
 
-
-# ✅ 실행 진입점
 if __name__ == "__main__":
     features_path = "features.npy"
     labels_path = "labels.npy"
     batch_size = 64
     epochs = 100
     lr = 1e-4
-    seq_len = 30
+    seq_len = 10
     grad_clip = 1.0
     patience = 10
     model_path = "model/fight/pa_lstm_fight_model.pth"
