@@ -1301,7 +1301,7 @@
     },
     "dataset/violence/violence_261.mp4": {
         "start_frame": 1,
-        "target_index": 1,
+        "target_index": 0,
         "label": 1
     },
     "dataset/violence/violence_262.mp4": {

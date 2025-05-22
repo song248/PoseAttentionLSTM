@@ -5,7 +5,7 @@ import torch.nn as nn
 from torch.utils.data import Dataset, DataLoader
 from sklearn.metrics import accuracy_score
 from tqdm import tqdm
-
+import matplotlib.pyplot as plt
 from model.pa_lstm import PoseAttentionLSTM
 
 class PoseSequenceDataset(Dataset):
@@ -37,14 +37,23 @@ def train(model, dataloader, optimizer, criterion, device, grad_clip=None):
     for X, y in dataloader:
         X, y = X.to(device), y.to(device)
         optimizer.zero_grad()
-        output = model(X)
-        loss = criterion(output, y)
+        # BCELoss
+        # ------------------------------
+        # output = model(X)
+        # loss = criterion(output, y)
+        # BCEWithLogitsLoss
+        # ------------------------------
+        output = model(X).unsqueeze(1) 
+        output = torch.sigmoid(output)
+        loss = criterion(output, y.unsqueeze(1))
+        # ------------------------------
         loss.backward()
         if grad_clip:
             nn.utils.clip_grad_norm_(model.parameters(), grad_clip)
         optimizer.step()
         losses.append(loss.item())
         preds.extend((output > 0.5).cpu().numpy())
+        # preds.extend((output > 0.4).cpu().numpy())
         targets.extend(y.cpu().numpy())
     acc = accuracy_score(targets, preds)
     return np.mean(losses), acc
@@ -55,13 +64,39 @@ def evaluate(model, dataloader, criterion, device):
     with torch.no_grad():
         for X, y in dataloader:
             X, y = X.to(device), y.to(device)
-            output = model(X)
-            loss = criterion(output, y)
+            # output = model(X)
+            # loss = criterion(output, y)
+            output = model(X).unsqueeze(1) 
+            loss = criterion(output, y.unsqueeze(1))
             losses.append(loss.item())
             preds.extend((output > 0.5).cpu().numpy())
             targets.extend(y.cpu().numpy())
     acc = accuracy_score(targets, preds)
     return np.mean(losses), acc
+
+def plot_training(train_losses, val_losses, train_accs, val_accs, save_path='loss_accuracy_plot.png'):
+    epochs = range(1, len(train_losses)+1)
+    plt.figure(figsize=(12, 5))
+
+    plt.subplot(1, 2, 1)
+    plt.plot(epochs, train_losses, label='Train Loss')
+    plt.plot(epochs, val_losses, label='Val Loss')
+    plt.xlabel('Epoch')
+    plt.ylabel('Loss')
+    plt.title('Loss Curve')
+    plt.legend()
+
+    plt.subplot(1, 2, 2)
+    plt.plot(epochs, train_accs, label='Train Acc')
+    plt.plot(epochs, val_accs, label='Val Acc')
+    plt.xlabel('Epoch')
+    plt.ylabel('Accuracy')
+    plt.title('Accuracy Curve')
+    plt.legend()
+
+    plt.tight_layout()
+    plt.savefig(save_path)
+    print(f"Saved training plot to {save_path}")
 
 def main(features_path, labels_path, batch_size, epochs, lr, seq_len, grad_clip, patience, model_path):
     os.makedirs(os.path.dirname(model_path), exist_ok=True)
@@ -75,13 +110,6 @@ def main(features_path, labels_path, batch_size, epochs, lr, seq_len, grad_clip,
     train_loader = DataLoader(train_set, batch_size=batch_size, shuffle=True)
     val_loader = DataLoader(val_set, batch_size=batch_size, shuffle=False)
 
-    # model = PoseAttentionLSTM(
-    #     num_joints=dataset.X_seq.shape[2],
-    #     input_dim=dataset.X_seq.shape[3] if dataset.X_seq.ndim == 4 else 2,
-    #     hidden_dim=128,
-    #     num_layers=1,
-    #     dropout=0.3
-    # ).to(device)
     model = PoseAttentionLSTM(
         num_joints=8,
         input_dim=2,
@@ -91,14 +119,24 @@ def main(features_path, labels_path, batch_size, epochs, lr, seq_len, grad_clip,
     ).to(device)
 
     optimizer = torch.optim.Adam(model.parameters(), lr=lr)
-    criterion = nn.BCELoss()
+    
+    # criterion = nn.BCELoss()
+    criterion = nn.BCEWithLogitsLoss(pos_weight=torch.tensor([2.0]).to(device))
 
     best_val_loss = float('inf')
     patience_counter = 0
 
+    train_losses, val_losses = [], []
+    train_accs, val_accs = [], []
+
     for epoch in range(epochs):
         train_loss, train_acc = train(model, train_loader, optimizer, criterion, device, grad_clip=grad_clip)
         val_loss, val_acc = evaluate(model, val_loader, criterion, device)
+
+        train_losses.append(train_loss)
+        val_losses.append(val_loss)
+        train_accs.append(train_acc)
+        val_accs.append(val_acc)
 
         print(f"[Epoch {epoch+1}] Train Loss: {train_loss:.4f}, Acc: {train_acc:.4f} | Val Loss: {val_loss:.4f}, Acc: {val_acc:.4f}")
 
@@ -112,15 +150,17 @@ def main(features_path, labels_path, batch_size, epochs, lr, seq_len, grad_clip,
                 print(f"Early stopping at epoch {epoch+1}")
                 break
 
+    plot_training(train_losses, val_losses, train_accs, val_accs)
+
 if __name__ == "__main__":
     features_path = "features.npy"
     labels_path = "labels.npy"
     batch_size = 64
-    epochs = 100
+    epochs = 200
     lr = 1e-4
     seq_len = 10
     grad_clip = 1.0
-    patience = 10
+    patience = 20
     model_path = "model/fight/pa_lstm_fight_model.pth"
 
     main(features_path, labels_path, batch_size, epochs, lr, seq_len, grad_clip, patience, model_path)
