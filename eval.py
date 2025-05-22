@@ -12,13 +12,11 @@ from sklearn.metrics import (
 from model.pa_lstm import PoseAttentionLSTM
 from train import PoseSequenceDataset
 from torch.utils.data import DataLoader
+from sklearn.metrics import f1_score
 
 SEQ_LEN = 10
 BATCH_SIZE = 64
 MODEL_PATH = "model/fight/pa_lstm_fight_model.pth"
-# MODEL_PATH = "model/fight/(old)pa_lstm_fight_model.pth"
-# MODEL_PATH = "model/fight/(100epoch)pa_lstm_fight_model.pth"
-# MODEL_PATH = "model/fight/(200epoch)pa_lstm_fight_model.pth"
 FEATURE_PATH = "test_features.npy"
 LABEL_PATH = "test_labels.npy"
 OUTPUT_DIR = "results"
@@ -48,9 +46,29 @@ with torch.no_grad():
     for X, y in test_loader:
         X, y = X.to(device), y.to(device).squeeze()
         outputs = model(X)
+        probs = torch.sigmoid(outputs)
         y_true.extend(y.cpu().numpy())
-        y_score.extend(outputs.cpu().numpy())
-        y_pred.extend((outputs > THRESHOLD).float().cpu().numpy())
+        y_score.extend(probs.cpu().numpy())
+        y_pred.extend((probs > THRESHOLD).float().cpu().numpy())
+
+def find_best_threshold(y_true, y_score):
+    thresholds = np.linspace(0.01, 0.99, 100)
+    best_threshold = 0.5
+    best_f1 = 0
+
+    for t in thresholds:
+        y_pred = (y_score >= t).astype(int)
+        f1 = f1_score(y_true, y_pred)
+        if f1 > best_f1:
+            best_f1 = f1
+            best_threshold = t
+
+    print(f"\n📌 Best Threshold: {best_threshold:.3f} | Best F1-score: {best_f1:.4f}")
+    return best_threshold
+
+THRESHOLD = find_best_threshold(np.array(y_true), np.array(y_score))
+
+y_pred = (np.array(y_score) >= THRESHOLD).astype(int)
 
 y_true = np.array(y_true)
 y_pred = np.array(y_pred)

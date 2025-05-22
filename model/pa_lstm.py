@@ -25,7 +25,6 @@ class PoseAttentionLSTM(nn.Module):
             nn.Linear(hidden_dim, 64),
             nn.ReLU(),
             nn.Linear(64, 1),  # Binary classification
-            nn.Sigmoid()       # Output probability
         )
 
     def forward(self, x):

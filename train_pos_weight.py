@@ -18,7 +18,7 @@ class PoseSequenceDataset(Dataset):
     def _build_sequences(self):
         X_seq, y_seq = [], []
         for i in range(len(self.features) - self.seq_len + 1):
-            X_seq.append(self.features[i:i + self.seq_len])
+            X_seq.append(self.features[i:i + self.seq_len].reshape(self.seq_len, 8, 2))
             y_seq.append(self.labels[i + self.seq_len - 1])
         return np.array(X_seq), np.array(y_seq)
 
@@ -26,8 +26,7 @@ class PoseSequenceDataset(Dataset):
         return len(self.X_seq)
 
     def __getitem__(self, idx):
-        X = self.X_seq[idx].reshape(self.seq_len, 8, 2)
-        X = torch.tensor(X, dtype=torch.float32)
+        X = torch.tensor(self.X_seq[idx], dtype=torch.float32)
         y = torch.tensor(self.y_seq[idx], dtype=torch.float32)
         return X, y
 
@@ -43,6 +42,7 @@ def train(model, dataloader, optimizer, criterion, device, grad_clip=None):
         if grad_clip:
             nn.utils.clip_grad_norm_(model.parameters(), grad_clip)
         optimizer.step()
+
         losses.append(loss.item())
         pred_probs = torch.sigmoid(output)
         preds.extend((pred_probs > 0.5).cpu().numpy())
@@ -93,6 +93,14 @@ def main(features_path, labels_path, batch_size, epochs, lr, seq_len, grad_clip,
     os.makedirs(os.path.dirname(model_path), exist_ok=True)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
+    # Load labels for pos_weight calculation
+    raw_labels = np.load(labels_path).squeeze()
+    num_pos = (raw_labels == 1).sum()
+    num_neg = (raw_labels == 0).sum()
+    pos_weight_value = num_neg / num_pos
+    pos_weight = torch.tensor([pos_weight_value], dtype=torch.float32).to(device)
+    print(f"Using pos_weight = {pos_weight_value:.4f}")
+
     dataset = PoseSequenceDataset(features_path, labels_path, seq_len=seq_len)
     train_size = int(0.8 * len(dataset))
     val_size = len(dataset) - train_size
@@ -110,7 +118,7 @@ def main(features_path, labels_path, batch_size, epochs, lr, seq_len, grad_clip,
     ).to(device)
 
     optimizer = torch.optim.Adam(model.parameters(), lr=lr)
-    criterion = nn.BCEWithLogitsLoss()
+    criterion = nn.BCEWithLogitsLoss(pos_weight=pos_weight)
 
     best_val_loss = float('inf')
     patience_counter = 0
