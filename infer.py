@@ -27,7 +27,7 @@ def run_pa_lstm_inference(video_path):
     yolo_model_path = "model/yolo/yolov8x-pose.pt"
     lstm_model_path = "model/fight/pa_lstm_fight_model.pth"
     seq_len = 10
-    threshold = 0.6
+    threshold = 0.28
     output_path = f"pa_lstm_result_{os.path.basename(video_path)}"
 
     pose_estimator = YoloPoseEstimation(yolo_model_path)
@@ -79,8 +79,9 @@ def run_pa_lstm_inference(video_path):
                         feature_seq = np.array(feature_buffer, dtype=np.float32).reshape(seq_len, 8, 2)
                         X = torch.tensor([feature_seq], dtype=torch.float32)
                         with torch.no_grad():
-                            pred = torch.sigmoid(model(X).unsqueeze(1)).item()
-                        latest_prediction = pred
+                            logits = model(X)
+                            pred = torch.sigmoid(logits)
+                            latest_prediction = pred.item()
 
                     annotated_frame = r.plot()
                     break
@@ -111,5 +112,7 @@ def run_pa_lstm_inference(video_path):
     print(f"[INFO] Inference complete. Saved result to: {output_path}")
 
 if __name__ == "__main__":
-    video_path = "test_video.mp4"
+    # video_path = "test_video.mp4"
+    video_path = "bench2.mp4"
     run_pa_lstm_inference(video_path)
+
