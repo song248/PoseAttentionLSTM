@@ -1,5 +1,17 @@
 # PoseAttentionLSTM
+Yolo pose based violence detection attentionLSTM  
+
 ## Process
+Yolo v8x - pose  
+Extract joint information  
+Create joint group features  
+Feed into attentionLSTM  
+Determine if violence is present  
+
+## Violence Detect
+<img src="violence_detect.png" width="60%">
+
+## Model
 x ∈ (B, T, J, D)  
 B: Batch size  
 T: Time steps  
@@ -27,3 +39,8 @@ D: Joint feature
 [Classifier (MLP)]  
  └── Linear(H → 64) → ReLU → Linear(64 → 1) → Sigmoid  
  └── output: pred ∈ (B,)  ← each samples violence probability
+
+
+ ### Refer
+ https://github.com/erwinyo/Fight-Detection-Yolov8-Pose  
+ https://github.com/song248/Violence-Detect-YOLO/tree/main?tab=readme-ov-file
